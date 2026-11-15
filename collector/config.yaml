@@ -1,0 +1,58 @@
+# Starter OpenTelemetry Collector config for Sneakers.
+# Receives OTLP over TLS from the box and fans it out to Tempo (traces),
+# Prometheus (metrics) and Loki (logs). Every address and certificate path
+# comes from the environment, so the same file serves the Compose stack and a
+# kind run. Documentation addresses only: collector.example.org.
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+        tls:
+          cert_file: ${env:OTLP_TLS_CERT_FILE}
+          key_file: ${env:OTLP_TLS_KEY_FILE}
+      http:
+        endpoint: 0.0.0.0:4318
+        tls:
+          cert_file: ${env:OTLP_TLS_CERT_FILE}
+          key_file: ${env:OTLP_TLS_KEY_FILE}
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_percentage: 80
+    spike_limit_percentage: 25
+  batch: {}
+
+exporters:
+  otlp/tempo:
+    endpoint: ${env:TEMPO_ENDPOINT}
+    tls:
+      insecure: true
+  prometheusremotewrite:
+    endpoint: ${env:PROMETHEUS_REMOTE_WRITE_URL}
+  otlphttp/loki:
+    endpoint: ${env:LOKI_ENDPOINT}
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+service:
+  extensions: [health_check]
+  telemetry:
+    logs:
+      level: ${env:LOG_LEVEL:-info}
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp/tempo]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [prometheusremotewrite]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlphttp/loki]
