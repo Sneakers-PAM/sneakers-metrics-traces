@@ -39,6 +39,10 @@ func sharedTemp(t *testing.T) string {
 	if err != nil {
 		t.Fatalf("temp dir: %v", err)
 	}
+	// MkdirTemp makes the dir 0700; the collector container runs as another user.
+	if err := os.Chmod(dir, 0o755); err != nil { //nolint:gosec // throwaway test dir, holds no secret
+		t.Fatalf("chmod %s: %v", dir, err)
+	}
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
 	return dir
 }
