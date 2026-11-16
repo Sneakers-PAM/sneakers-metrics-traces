@@ -99,3 +99,19 @@ func TestBrokenStackFails(t *testing.T) {
 		t.Fatalf("expected a broken stack file to be rejected, got:\n%s", out)
 	}
 }
+
+func TestGrafanaProvisionsTheDashboards(t *testing.T) {
+	svc := load(t).Services["grafana"]
+	var provider, dashboards bool
+	for _, v := range svc.Volumes {
+		if strings.HasSuffix(v.Source, "stack/grafana-dashboards.yaml") && strings.HasPrefix(v.Target, "/etc/grafana/provisioning/dashboards/") {
+			provider = true
+		}
+		if strings.HasSuffix(v.Source, "/dashboards") {
+			dashboards = true
+		}
+	}
+	if !provider || !dashboards {
+		t.Errorf("grafana must mount the dashboard provider and dashboards/: %+v", svc.Volumes)
+	}
+}

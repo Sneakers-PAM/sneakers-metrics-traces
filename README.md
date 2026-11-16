@@ -33,6 +33,20 @@ A `certs` step generates a throwaway certificate for `collector.example.org` on 
 4317 (gRPC) and 4318 (HTTP) over TLS, and Grafana is on <http://localhost:3000> with the three
 data sources already provisioned. Backend settings live in `stack/`.
 
+## 📊 Dashboards
+
+`dashboards/sneakers-overview.json` is provisioned into Grafana by the Compose stack: gRPC and HTTP
+rate, status and latency per service (a `Service` selector at the top), the logs from Loki and recent
+traces from Tempo. HTTP latency reads the otelhttp histogram only, because the go-otel histogram of the
+same name uses the SDK's default buckets, which suit milliseconds.
+
+Every metric and label a dashboard queries is checked against the telemetry contract. `testdata/telemetry.json`
+is `docs/telemetry.json` from sneakers-release at the ref in `testdata/telemetry.ref`; `go test ./...` fails when a
+Prometheus query uses a name or label the contract does not list. The collector exports names as
+Prometheus holds them: dots become underscores, the unit becomes a suffix (`_seconds`, `_bytes`),
+counters end in `_total`, `service.name` is the `job` label and the instrumentation scope is `otel_scope_name`.
+To follow a new release, copy its `docs/telemetry.json` and `docs/telemetry.ref` into `testdata/`.
+
 ## 🛠 Develop
 
 ```bash
