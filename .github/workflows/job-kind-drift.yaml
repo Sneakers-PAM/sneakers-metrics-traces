@@ -1,0 +1,113 @@
+name: Kind drift
+# Installs the sneakers-release chart at the ref in testdata/telemetry.ref on a
+# throwaway kind cluster, with every service exporting OTLP to an in-cluster
+# collector, and fails when what the nine services send has drifted from the
+# telemetry contract in testdata/. This repo is optional, so the job is never a
+# required check and is not part of appliance CI. It runs by hand and on pull
+# requests that touch the kind files or the checker; building nine images takes
+# most of its run time.
+on:
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'kind/**'
+      - 'internal/contract/**'
+      - 'internal/drift/**'
+      - 'testdata/**'
+      - '.github/workflows/job-kind-drift.yaml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: kind-drift-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  drift:
+    name: 🚢 Kind drift
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    env:
+      KIND_CLUSTER: sneakers
+      NAMESPACE: sneakers
+      LOG_LEVEL: info
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Read the release ref
+        id: ref
+        run: |
+          ref="$(tr -d '[:space:]' < testdata/telemetry.ref)"
+          echo "release ref: $ref"
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+      - name: Checkout sneakers-release at that ref
+        uses: actions/checkout@v4
+        with:
+          repository: Sneakers-PAM/sneakers-release
+          ref: ${{ steps.ref.outputs.ref }}
+          path: release
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Install tools
+        working-directory: release
+        run: |
+          scripts/install-tools.sh "$RUNNER_TEMP/bin" helm kind kubectl
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      # The node image is the one the release repo's own install test uses, so
+      # the two cannot drift apart.
+      - name: Create the cluster
+        run: |
+          image="$(grep -m1 'KIND_NODE_IMAGE:' release/.github/workflows/install-test.yml | awk '{print $2}')"
+          echo "node image: $image"
+          kind create cluster --name "$KIND_CLUSTER" --image "$image" --wait 180s
+      # Releases after rc.7 issue the services' mTLS certificates through
+      # cert-manager; the pinned ref decides whether this step exists.
+      - name: Install cert-manager
+        working-directory: release
+        run: |
+          if [ -x test/kind/install-cert-manager.sh ]; then
+            test/kind/install-cert-manager.sh
+          else
+            echo "this release ref has no test/kind/install-cert-manager.sh; skipping"
+          fi
+      - name: Build the service images
+        working-directory: release
+        run: test/kind/build-images.sh
+      - name: Deploy the collector
+        run: kind/run.sh collector
+      - name: Install the release with every service exporting
+        id: install
+        env:
+          RELEASE_DIR: ${{ github.workspace }}/release
+        run: kind/run.sh install
+      # Both checks run when the install worked, so one run reports every failure.
+      - name: Check the recording against the contract
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: kind/run.sh check-real
+      - name: Check the recording with a service stopped
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        env:
+          RELEASE_DIR: ${{ github.workspace }}/release
+        run: kind/run.sh check-stopped
+      - name: Keep the recordings
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: recordings
+          path: recordings
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Diagnostics
+        if: failure()
+        run: |
+          kubectl -n "$NAMESPACE" get pods,events -o wide || true
+          for p in $(kubectl -n "$NAMESPACE" get pods -o name 2>/dev/null); do
+            echo "::group::$p"
+            kubectl -n "$NAMESPACE" describe "$p" | tail -30 || true
+            kubectl -n "$NAMESPACE" logs "$p" --all-containers --tail=80 || true
+            echo "::endgroup::"
+          done

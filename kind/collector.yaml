@@ -1,0 +1,42 @@
+# In-cluster collector for the kind drift job. It takes plaintext OTLP from the
+# services (their endpoint is a plain http:// URL, and a self-signed
+# certificate would not be trusted) and writes every request, one JSON object
+# per line, to files the job copies out and checks against the contract.
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+exporters:
+  file/traces:
+    path: /data/traces.jsonl
+    flush_interval: 1s
+  file/metrics:
+    path: /data/metrics.jsonl
+    flush_interval: 1s
+  file/logs:
+    path: /data/logs.jsonl
+    flush_interval: 1s
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+service:
+  extensions: [health_check]
+  telemetry:
+    logs:
+      level: info
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [file/traces]
+    metrics:
+      receivers: [otlp]
+      exporters: [file/metrics]
+    logs:
+      receivers: [otlp]
+      exporters: [file/logs]

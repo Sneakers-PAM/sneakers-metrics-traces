@@ -12,10 +12,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"os"
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/Sneakers-PAM/sneakers-metrics-traces/internal/contract"
 )
 
 // Contract is the part of the telemetry contract the check needs, expanded
@@ -28,18 +29,6 @@ type Contract struct {
 	series map[string]map[string]bool
 }
 
-type contractDoc struct {
-	Release struct {
-		Ref string `json:"ref"`
-	} `json:"release"`
-	Metrics []struct {
-		Name     string              `json:"name"`
-		Type     string              `json:"type"`
-		Unit     string              `json:"unit"`
-		Services map[string][]string `json:"services"`
-	} `json:"metrics"`
-}
-
 // unitSuffix is how the collector's Prometheus exporter spells a unit.
 var unitSuffix = map[string]string{"": "", "s": "_seconds", "By": "_bytes", "ms": "_milliseconds"}
 
@@ -47,20 +36,15 @@ var unitSuffix = map[string]string{"": "", "s": "_seconds", "By": "_bytes", "ms"
 // job, and the instrumentation scope becomes otel_scope_name.
 var baseLabels = []string{"job", "instance", "otel_scope_name"}
 
-// LoadContract reads docs/telemetry.json (or a pinned copy) and derives the
-// Prometheus series names and labels from it.
+// LoadContract reads the telemetry contract and derives the Prometheus series
+// names and labels from it.
 func LoadContract(path string) (*Contract, error) {
-	slog.Debug("loading telemetry contract", "path", path)
-	raw, err := os.ReadFile(path) // #nosec G304 -- path is a fixture or a flag the caller chose, not user input
+	doc, err := contract.Load(path)
 	if err != nil {
-		return nil, fmt.Errorf("read contract %s: %w", path, err)
+		return nil, err
 	}
-	var f contractDoc
-	if err := json.Unmarshal(raw, &f); err != nil {
-		return nil, fmt.Errorf("parse contract %s: %w", path, err)
-	}
-	c := &Contract{Ref: f.Release.Ref, series: map[string]map[string]bool{}}
-	for _, m := range f.Metrics {
+	c := &Contract{Ref: doc.Ref, series: map[string]map[string]bool{}}
+	for _, m := range doc.Metrics {
 		suffix, ok := unitSuffix[m.Unit]
 		if !ok {
 			return nil, fmt.Errorf("metric %s: unit %q has no known Prometheus suffix", m.Name, m.Unit)
@@ -86,7 +70,7 @@ func LoadContract(path string) (*Contract, error) {
 			return nil, fmt.Errorf("metric %s: type %q is not handled", m.Name, m.Type)
 		}
 	}
-	slog.Debug("telemetry contract loaded", "ref", c.Ref, "series", len(c.series))
+	slog.Debug("series derived from the contract", "ref", c.Ref, "series", len(c.series))
 	return c, nil
 }
 
