@@ -51,7 +51,7 @@ var baseLabels = []string{"job", "instance", "otel_scope_name"}
 // Prometheus series names and labels from it.
 func LoadContract(path string) (*Contract, error) {
 	slog.Debug("loading telemetry contract", "path", path)
-	raw, err := os.ReadFile(path) //nolint:gosec // path is a test fixture or a flag the caller chose
+	raw, err := os.ReadFile(path) // #nosec G304 -- path is a fixture or a flag the caller chose, not user input
 	if err != nil {
 		return nil, fmt.Errorf("read contract %s: %w", path, err)
 	}
