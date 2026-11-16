@@ -80,12 +80,16 @@ jobs:
       - name: Deploy the collector
         run: kind/run.sh collector
       - name: Install the release with every service exporting
+        id: install
         env:
           RELEASE_DIR: ${{ github.workspace }}/release
         run: kind/run.sh install
+      # Both checks run when the install worked, so one run reports every failure.
       - name: Check the recording against the contract
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: kind/run.sh check-real
       - name: Check the recording with a service stopped
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         env:
           RELEASE_DIR: ${{ github.workspace }}/release
         run: kind/run.sh check-stopped
