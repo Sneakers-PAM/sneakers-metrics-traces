@@ -64,9 +64,16 @@ jobs:
           image="$(grep -m1 'KIND_NODE_IMAGE:' release/.github/workflows/install-test.yml | awk '{print $2}')"
           echo "node image: $image"
           kind create cluster --name "$KIND_CLUSTER" --image "$image" --wait 180s
+      # Releases after rc.7 issue the services' mTLS certificates through
+      # cert-manager; the pinned ref decides whether this step exists.
       - name: Install cert-manager
         working-directory: release
-        run: test/kind/install-cert-manager.sh
+        run: |
+          if [ -x test/kind/install-cert-manager.sh ]; then
+            test/kind/install-cert-manager.sh
+          else
+            echo "this release ref has no test/kind/install-cert-manager.sh; skipping"
+          fi
       - name: Build the service images
         working-directory: release
         run: test/kind/build-images.sh
