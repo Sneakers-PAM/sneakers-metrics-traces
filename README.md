@@ -19,6 +19,20 @@ environment variables:
 Point the chart's `global.otlpEndpoint` at the receiver, for example `https://collector.example.org:4317`.
 No key is stored in this repo; the tests generate a throwaway certificate for `collector.example.org`.
 
+## 🐳 Compose stack
+
+`compose.yaml` runs the collector with Tempo, Prometheus, Loki and Grafana. Images are pinned.
+
+```bash
+docker compose up -d     # certs, collector, tempo, prometheus, loki, grafana
+docker compose down -v   # stop and drop the data
+```
+
+A `certs` step generates a throwaway certificate for `collector.example.org` on first start
+(`OTLP_TLS_HOSTNAME` changes the name); no key is stored in this repo. The collector listens on
+4317 (gRPC) and 4318 (HTTP) over TLS, and Grafana is on <http://localhost:3000> with the three
+data sources already provisioned. Backend settings live in `stack/`.
+
 ## 🛠 Develop
 
 ```bash
