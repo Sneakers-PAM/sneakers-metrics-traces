@@ -109,6 +109,13 @@ func TestDriftFlagsEachKindOfChange(t *testing.T) {
 	}
 }
 
+func TestDriftAcceptsRedactedSpanNames(t *testing.T) {
+	r := parse(t, []string{span("identity", "[span]", 2, 0), span("identity", "[span]", 3, 0)}, nil, nil)
+	if got := r.Drift(load(t)); len(got) != 0 {
+		t.Fatalf("the services redact span names to [span]; unexpected drift: %v", got)
+	}
+}
+
 func TestDriftAcceptsAnyOfTheServicesMetricsAndScopes(t *testing.T) {
 	r := parse(t, nil, []string{
 		metric("gateway", otelhttp, "http.server.request.duration", map[string]string{"http.route": "/x", "http.response.status_code": "200"}),
@@ -186,7 +193,7 @@ func TestFailureSignalsNeedAClientErrorAndAnErrorSpan(t *testing.T) {
 }
 
 func TestParseRejectsBrokenJSON(t *testing.T) {
-	if _, err := Parse(strings.NewReader("{not json"), strings.NewReader(""), strings.NewReader("")); err == nil {
+	if _, err := Parse(strings.NewReader("{not json\n"), strings.NewReader(""), strings.NewReader("")); err == nil {
 		t.Fatal("expected an error for a broken line")
 	}
 }
@@ -195,5 +202,27 @@ func TestParseAcceptsEmptyInput(t *testing.T) {
 	r := parse(t, nil, nil, nil)
 	if got := r.Drift(load(t)); len(got) != 0 {
 		t.Fatalf("an empty recording has no drift: %v", got)
+	}
+}
+
+func TestParseSkipsATruncatedLastLine(t *testing.T) {
+	// The collector is still writing when the recording is copied, so the last
+	// line may stop mid-way and carry no newline.
+	whole := logline("identity")
+	cut := whole[:len(whole)/2]
+	r, err := Parse(strings.NewReader(""), strings.NewReader(""), strings.NewReader(whole+"\n"+cut))
+	if err != nil {
+		t.Fatalf("a cut last line must be skipped: %v", err)
+	}
+	if r.logs["identity"] != 1 {
+		t.Fatalf("the whole line must still count, got %d", r.logs["identity"])
+	}
+}
+
+func TestParseRejectsABrokenLineInTheMiddle(t *testing.T) {
+	whole := logline("identity")
+	in := whole[:len(whole)/2] + "\n" + whole + "\n"
+	if _, err := Parse(strings.NewReader(""), strings.NewReader(""), strings.NewReader(in)); err == nil {
+		t.Fatal("a broken line that is not the last must be an error")
 	}
 }

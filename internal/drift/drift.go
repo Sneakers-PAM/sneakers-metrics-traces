@@ -9,6 +9,7 @@ package drift
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -145,20 +146,33 @@ func isErrorStatus(code any) bool {
 	return false
 }
 
+// lines calls each for every non-empty line. The collector may still be
+// writing when a recording is copied, so a last line with no newline that does
+// not parse is a cut write and is skipped; a bad line anywhere else is an error.
 func lines(r io.Reader, each func(line []byte) error) error {
-	sc := bufio.NewScanner(r)
-	sc.Buffer(make([]byte, 0, 1<<20), maxLine)
-	n := 0
-	for sc.Scan() {
-		n++
-		if len(sc.Bytes()) == 0 {
-			continue
+	br := bufio.NewReaderSize(r, 1<<20)
+	for n := 1; ; n++ {
+		line, err := br.ReadBytes('\n')
+		complete := err == nil
+		if err != nil && err != io.EOF {
+			return err
 		}
-		if err := each(sc.Bytes()); err != nil {
-			return fmt.Errorf("line %d: %w", n, err)
+		if trimmed := bytes.TrimRight(line, "\r\n"); len(trimmed) > 0 {
+			if len(trimmed) > maxLine {
+				return fmt.Errorf("line %d: longer than %d bytes", n, maxLine)
+			}
+			if eachErr := each(trimmed); eachErr != nil {
+				if !complete {
+					slog.Warn("skipping a cut last line", "line", n, "error", eachErr)
+					return nil
+				}
+				return fmt.Errorf("line %d: %w", n, eachErr)
+			}
+		}
+		if !complete {
+			return nil
 		}
 	}
-	return sc.Err()
 }
 
 // Parse reads the three JSON-lines streams of a recording.

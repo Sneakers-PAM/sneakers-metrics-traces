@@ -47,6 +47,8 @@ type Service struct {
 	Spans       []SpanName
 	Metrics     []MetricRef
 	MetricAttrs []string
+
+	placeholder string
 }
 
 // Contract is the whole contract at one release ref.
@@ -55,6 +57,9 @@ type Contract struct {
 	Ref string
 	// Metrics are the instruments, as in docs/telemetry.json.
 	Metrics []Metric
+	// SpanPlaceholder is the name the services give every span they export:
+	// span names are redacted before they leave the box.
+	SpanPlaceholder string
 
 	services map[string]*Service
 }
@@ -63,8 +68,9 @@ type document struct {
 	Release struct {
 		Ref string `json:"ref"`
 	} `json:"release"`
-	Metrics  []Metric `json:"metrics"`
-	Services map[string]struct {
+	SpanPlaceholder string   `json:"span_placeholder"`
+	Metrics         []Metric `json:"metrics"`
+	Services        map[string]struct {
 		Resource []string `json:"resource"`
 		Spans    struct {
 			Names []struct {
@@ -88,9 +94,9 @@ func Load(path string) (*Contract, error) {
 	if err := json.Unmarshal(raw, &d); err != nil {
 		return nil, fmt.Errorf("parse contract %s: %w", path, err)
 	}
-	c := &Contract{Ref: d.Release.Ref, Metrics: d.Metrics, services: map[string]*Service{}}
+	c := &Contract{Ref: d.Release.Ref, Metrics: d.Metrics, SpanPlaceholder: d.SpanPlaceholder, services: map[string]*Service{}}
 	for name, s := range d.Services {
-		svc := &Service{Name: name, Resource: s.Resource, Metrics: s.Metrics, MetricAttrs: s.MetricAttrs}
+		svc := &Service{Name: name, Resource: s.Resource, Metrics: s.Metrics, MetricAttrs: s.MetricAttrs, placeholder: d.SpanPlaceholder}
 		for _, n := range s.Spans.Names {
 			re, err := regexp.Compile(n.Pattern)
 			if err != nil {
@@ -141,9 +147,14 @@ func (s *Service) HasMetricName(name string) bool {
 func (s *Service) ExportsSpans() bool { return len(s.Spans) > 0 }
 
 // MatchSpan reports whether a span of that name and kind is in the contract.
+// The redacted name matches any kind the service lists, because the services
+// replace every span name with it.
 func (s *Service) MatchSpan(name, kind string) bool {
 	for _, sp := range s.Spans {
-		if sp.Kind == kind && sp.Pattern.MatchString(name) {
+		if sp.Kind != kind {
+			continue
+		}
+		if sp.Pattern.MatchString(name) || (s.placeholder != "" && name == s.placeholder) {
 			return true
 		}
 	}

@@ -101,3 +101,20 @@ func TestResourceAttributesAreTheListedOnes(t *testing.T) {
 		}
 	}
 }
+
+func TestRedactedSpanNamesMatchByKind(t *testing.T) {
+	c := load(t)
+	if c.SpanPlaceholder != "[span]" {
+		t.Fatalf("placeholder = %q, want [span]", c.SpanPlaceholder)
+	}
+	id := c.Service("identity")
+	if !id.MatchSpan("[span]", "SERVER") || !id.MatchSpan("[span]", "CLIENT") {
+		t.Error("the redacted name must match the kinds identity lists")
+	}
+	if id.MatchSpan("[span]", "PRODUCER") {
+		t.Error("the redacted name must still match by kind")
+	}
+	if c.Service("mcp").MatchSpan("[span]", "SERVER") {
+		t.Error("mcp lists no spans, so a redacted span from it is drift")
+	}
+}
