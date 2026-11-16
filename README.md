@@ -47,6 +47,31 @@ Prometheus holds them: dots become underscores, the unit becomes a suffix (`_sec
 counters end in `_total`, `service.name` is the `job` label and the instrumentation scope is `otel_scope_name`.
 To follow a new release, copy its `docs/telemetry.json` and `docs/telemetry.ref` into `testdata/`.
 
+## 🚢 Kind drift job
+
+`.github/workflows/job-kind-drift.yaml` installs the sneakers-release chart on a throwaway kind cluster at the
+ref in `testdata/telemetry.ref`, with every service exporting OTLP to an in-cluster collector (`kind/`), and
+fails when what the nine services send has drifted from the telemetry contract. It runs by hand and on pull
+requests that touch the kind files or the checker. This repo is optional, so the job is never a required check
+and is not part of appliance CI.
+
+It reuses the release repo's own install test (`test/kind/run.sh`) for the cluster, the images and the traffic.
+The in-cluster collector takes plaintext OTLP, because the chart passes the services a plain `http://` endpoint;
+the Compose stack keeps the TLS receiver. It writes every request to files, and a busybox sidecar on the same
+volume is what `kubectl cp` reads, since the collector image has no shell or `tar`.
+
+`internal/drift` fails the job on anything in the recording that the contract does not list: a service, metric,
+scope, metric attribute, span name or resource attribute. It also reports a service with no metrics, no logs or,
+where the contract lists span names, no traces. It asks for one of each, not every instrument, because most only
+appear once the matching traffic runs. Log fields are not checked yet. A second recording is taken with one
+service stopped and must hold a gRPC client call that did not end OK and a span in error status.
+
+To run the check on a recording by hand:
+
+```bash
+RECORDING_DIR=./recordings/real RECORDING_MODE=real go test ./internal/drift -run 'TestRecording$' -v
+```
+
 ## 🛠 Develop
 
 ```bash

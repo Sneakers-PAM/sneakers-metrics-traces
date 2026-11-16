@@ -132,3 +132,10 @@ func TestBrokenConfigFails(t *testing.T) {
 		t.Fatalf("validate failed for another reason:\n%s", out)
 	}
 }
+
+func TestKindConfigValidates(t *testing.T) {
+	out, err := validate(t, "../../kind/collector.yaml")
+	if err != nil {
+		t.Fatalf("otelcol validate failed on the kind config: %v\n%s", err, out)
+	}
+}

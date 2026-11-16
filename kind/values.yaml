@@ -1,0 +1,34 @@
+# Values for the kind drift job, applied before the release repo's own
+# test/kind/values.yaml (BASE_VALUES in its run.sh). Every service exports OTLP
+# traces, metrics and logs to the in-cluster collector.
+global:
+  otlpEndpoint: http://collector.sneakers.svc.cluster.local:4317
+  logLevel: info
+
+identity:
+  env:
+    OTLP_LOGS_ENABLED: "true"
+vault:
+  env:
+    OTLP_LOGS_ENABLED: "true"
+workflow:
+  env:
+    OTLP_LOGS_ENABLED: "true"
+audit:
+  env:
+    OTLP_LOGS_ENABLED: "true"
+notify:
+  env:
+    OTLP_LOGS_ENABLED: "true"
+connector:
+  env:
+    OTLP_LOGS_ENABLED: "true"
+sshbroker:
+  env:
+    OTLP_LOGS_ENABLED: "true"
+gateway:
+  env:
+    OTLP_LOGS_ENABLED: "true"
+mcp:
+  env:
+    OTLP_LOGS_ENABLED: "true"

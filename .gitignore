@@ -12,3 +12,6 @@ coverage.*
 
 # local environment - copy .env.example to .env
 .env
+
+# Kind drift job recordings
+/recordings/
